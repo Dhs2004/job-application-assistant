@@ -1,15 +1,16 @@
 # 投递舱 / Job Application Assistant
 
-一个本地优先、可解释且安全可控的求职申请助手。上传简历并设置目标岗位后，它会导入合规岗位源、计算匹配分数、生成邮件草稿，并在你明确开启自动投递后通过自己的 SMTP 发送申请。
+一个本地优先的 AI 求职助手。它使用你选择的 AI Provider 分析简历、搜索有来源的岗位、核验公开招聘邮箱并生成申请邮件。每封邮件都需要用户单独确认。
 
-## 功能
+## 主要功能
 
-- 解析 PDF、DOCX、TXT 简历，允许校正文本和技能。
-- 按必备技能、相关能力、经验、地点、岗位和薪资计算可解释分数。
-- 支持内置演示数据和自定义 HTTPS JSON Feed。
-- 生成中文或英文申请邮件，附带原始简历。
-- SMTP 测试、显式总开关、最低分数、每日上限、去重和暂停控制。
-- SQLite 本地存储、CSV 投递记录导出、一键删除本地数据。
+- 支持 OpenAI、阿里云百炼 / Qwen 和具备联网搜索能力的 OpenAI-compatible Provider。
+- 解析 PDF、DOCX 和 TXT 简历，在明示同意后调用 AI 提取候选人档案。
+- 展示岗位页、邮箱来源、搜索时间、匹配理由、能力缺口和置信度。
+- 只允许向来源可验证的公开招聘邮箱发送。
+- 支持 Gmail、Outlook、QQ 邮箱、163 邮箱和自定义 SMTP。
+- 使用与收件人、主题、正文和附件绑定的一次性确认 token，并阻止重复投递。
+- 支持导出投递记录和清除全部本地数据。
 
 ## 快速开始
 
@@ -17,48 +18,32 @@
 
 ```bash
 npm install
-cp .env.example .env
 npm run dev
 ```
 
-浏览器打开 `http://localhost:4316`。前端开发服务会把 `/api` 转发到 `http://127.0.0.1:4317`。
+打开 `http://localhost:4316`。前端开发服务会将 `/api` 转发到 `http://127.0.0.1:4317`。
 
-## SMTP 配置
+首次使用流程：
 
-编辑 `.env`：
+1. 选择 AI Provider，输入 API Key 和模型。
+2. 上传简历，阅读隐私提示后同意 AI 分析。
+3. 在工作台中连接发件邮箱，使用邮箱服务商生成的应用专用密码或 SMTP token。
+4. 搜索岗位，核对岗位和邮箱来源，编辑草稿后单独确认投递。
 
-```dotenv
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=you@example.com
-SMTP_PASS=your-app-password
-SMTP_FROM="Your Name <you@example.com>"
-```
+## Provider 配置
 
-优先使用邮箱服务商提供的应用专用密码或 SMTP token，不要使用主账号密码。应用不会把密钥写入浏览器、SQLite 或日志。配置完成后，先在左侧向自己的邮箱发送测试邮件，再确认模板并开启自动投递。
+- OpenAI 使用 Responses API 的 `web_search` 工具。
+- Qwen 使用百炼 OpenAI-compatible Chat Completions 接口的联网搜索功能。
+- 自定义 Provider 必须使用公开 HTTPS Base URL，并在能力探测中返回联网搜索证据。纯文本模型不能用于岗位发现。
 
-## 岗位 Feed
+AI 输出始终被视为不可信输入。服务端会校验字段长度、HTTPS URL、邮箱、来源关系和返回数量，并丢弃无来源或格式错误的岗位。
 
-Feed 必须通过公开 HTTPS URL 提供，格式参考 [`examples/jobs-feed.json`](examples/jobs-feed.json)。根节点可以是岗位数组，也可以是包含 `jobs` 数组的对象。每个岗位必须包含 `title`、`company`、`description` 和 `url`；只有提供公开 `applyEmail` 的岗位才可能自动投递。
+## 隐私与安全
 
-系统拒绝 HTTP、本机、私有网段和链路本地地址，限制响应大小、超时和重定向次数。它不会绕过招聘网站登录、验证码、访问控制或反自动化措施。请只接入你有权使用的官方 API、公开 Feed 或自有数据源。
-
-## 自动投递规则
-
-自动投递默认关闭。开启前必须：
-
-1. 上传并检查简历解析结果；
-2. 成功发送 SMTP 测试邮件；
-3. 预览并确认邮件模板；
-4. 设置最低匹配分和每日上限；
-5. 手动打开自动投递总开关。
-
-服务每 15 分钟检查一次新岗位。每封邮件发送前都会重新验证岗位状态、公开邮箱、分数、每日额度和去重键。系统不会编造简历经历，也不保证获得面试。
-
-## 隐私
-
-运行数据保存在 `.data/`，其中包括简历受控副本、解析文本、岗位和投递记录。`.data/` 与 `.env` 已加入 `.gitignore`。不要把真实简历、邮箱密钥或投递数据库提交到代码仓库。
+- AI API Key 和 SMTP 应用专用密码只保存在 Node 进程内存中，不写入 SQLite、文件、日志或浏览器存储。重启服务后需重新输入。
+- 简历、岗位和投递记录保存在 `.data/`。该目录已被 Git 忽略。
+- 简历正文会在用户同意后发送给已选 AI Provider，但不会发送给岗位网站。
+- 应用不猜测私人邮箱，不绕过登录、验证码、访问控制或站点反自动化措施。
 
 ## 验证
 
@@ -67,10 +52,11 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npm audit --omit=dev
 npm start
 ```
 
-生产构建后，服务从 `dist/` 提供页面并监听 `http://127.0.0.1:4317`。
+生产构建后，服务从 `dist/` 提供页面，默认监听 `http://127.0.0.1:4317`。
 
 ## License
 

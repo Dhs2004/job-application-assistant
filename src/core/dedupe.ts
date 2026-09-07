@@ -1,9 +1,9 @@
-import type { JobRecord } from '../shared/types.js';
+import type { DiscoveredJob } from '../shared/types.js';
 import { normalizeTerm } from './text.js';
 
 /** Produces a stable identity for one company, role, recipient and posting. */
-export function createDedupeKey(job: JobRecord): string {
-  const source = [job.company, job.title, job.applyEmail ?? '', job.url].map(normalizeTerm).join('|');
+export function createDedupeKey(job: DiscoveredJob): string {
+  const source = [job.company, job.title, job.applyEmail ?? '', job.sourceUrl].map(normalizeTerm).join('|');
   let first = 0x811c9dc5;
   let second = 0x9e3779b9;
   for (const character of source) {

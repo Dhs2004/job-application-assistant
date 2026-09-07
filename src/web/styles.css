@@ -65,6 +65,9 @@ label { display: grid; gap: 7px; color: var(--token-ink-soft); font-size: var(--
 .file-drop b, .file-drop span { display: block; }
 .file-drop b { color: var(--token-ink); font-size: var(--token-size-body); }
 .file-drop span { margin-top: 5px; font-weight: 400; }
+.form-note { margin: 0; color: var(--token-ink-soft); font-size: var(--token-size-caption); line-height: 1.55; }
+.consent-row { display: grid; grid-template-columns: 18px 1fr; align-items: start; line-height: 1.5; }
+.consent-row input { width: 16px; margin-top: 2px; accent-color: var(--token-accent); }
 
 .app-shell { min-height: 100vh; }
 .topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--token-ink); background: var(--token-card); }
@@ -79,6 +82,8 @@ label { display: grid; gap: 7px; color: var(--token-ink-soft); font-size: var(--
 
 .control-rail { display: flex; flex-direction: column; overflow-y: auto; border-right: 1px solid var(--token-ink); background: var(--token-paper-deep); }
 .rail-section { display: grid; gap: 15px; padding: 22px; border-bottom: 1px solid var(--token-line); }
+.query-input { min-height: 88px; resize: vertical; line-height: 1.45; }
+.safety-card p { margin: 0; color: var(--token-ink-soft); font-size: var(--token-size-caption); line-height: 1.55; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; }
 .switch-row small { display: block; margin-top: 3px; color: var(--token-ink-soft); }
 .toggle { width: 43px; padding: 3px; border: 1px solid var(--token-ink); border-radius: var(--token-radius-max); background: var(--token-card); }
@@ -135,6 +140,8 @@ input[type="range"] { padding: 0; accent-color: var(--token-accent); box-shadow:
 .evidence h4, .draft h4 { margin: 0 0 12px; font-size: var(--token-size-body); }
 .evidence p { color: var(--token-ink-soft); line-height: 1.5; }
 .evidence .warning { color: var(--token-danger); }
+.source-proof { display: grid; gap: 8px; margin-top: 18px; padding: 14px; border: 1px solid var(--token-line); border-radius: var(--token-radius-small); background: var(--token-paper); color: var(--token-ink-soft); font-size: var(--token-size-caption); }
+.source-proof a { color: var(--token-green); font-weight: 700; }
 .draft { margin-top: 26px; }
 .section-head { display: flex; justify-content: space-between; }
 .section-head span { color: var(--token-ink-soft); font-size: var(--token-size-caption); }
@@ -155,6 +162,8 @@ input[type="range"] { padding: 0; accent-color: var(--token-accent); box-shadow:
 .history-empty { margin: 50px 0; color: var(--token-ink-soft); }
 .modal-backdrop { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; padding: 24px; background: var(--token-overlay); }
 .resume-modal { position: relative; width: min(760px, 100%); max-height: 90vh; overflow: auto; padding: 34px; border-radius: var(--token-radius-large); background: var(--token-card); box-shadow: 14px 14px 0 var(--token-accent); }
+.smtp-modal { position: relative; width: min(580px, 100%); max-height: 90vh; overflow: auto; display: grid; gap: 17px; padding: 34px; border-radius: var(--token-radius-large); background: var(--token-card); box-shadow: 14px 14px 0 var(--token-accent); }
+.smtp-modal h2 { margin: 0; font: 600 var(--token-size-heading-large) var(--token-font-display); }
 .resume-modal h2 { font: 600 var(--token-size-heading-large) var(--token-font-display); }
 .resume-modal label { margin: 17px 0; }
 .resume-modal textarea { min-height: 430px; line-height: 1.6; }

@@ -1,26 +1,29 @@
-import type { JobRecord } from '../shared/types.js';
+import type { CandidateProfile, DiscoveredJob } from '../shared/types.js';
 
-export const SAMPLE_JOBS: JobRecord[] = [
-  {
-    id: 'sample-frontend-aurora', title: '高级前端工程师', company: 'Aurora Labs',
-    description: '负责数据产品体验，要求 3 年以上 React、TypeScript 开发经验，重视可访问性与工程质量。',
-    location: '上海', remote: true, salaryMin: 350000, salaryMax: 520000, currency: 'CNY',
-    skills: ['React', 'TypeScript', 'Vite', 'Accessibility', 'CSS'], requiredSkills: ['React', 'TypeScript'],
-    applyEmail: 'jobs@example.com', url: 'https://example.com/jobs/frontend-aurora', source: '内置示例', active: true,
-    importedAt: new Date().toISOString(),
-  },
-  {
-    id: 'sample-ai-product-orbit', title: 'AI 产品工程师', company: 'Orbit Works',
-    description: '构建 AI 工作流与评测平台，期望 2 年 TypeScript 或 Python 经验。',
-    location: '北京', remote: false, salaryMin: 300000, salaryMax: 480000, currency: 'CNY',
-    skills: ['TypeScript', 'Python', 'LLM', 'Evaluation', 'React'], requiredSkills: ['TypeScript', 'LLM'],
-    applyEmail: 'talent@example.org', url: 'https://example.org/careers/ai-product', source: '内置示例', active: true,
-    importedAt: new Date().toISOString(),
-  },
-  {
-    id: 'sample-platform-nomail', title: '平台工程师', company: 'Northstar',
-    description: '负责云原生平台建设，需要 5 年 Go、Kubernetes 经验。', location: '深圳', remote: false,
-    skills: ['Go', 'Kubernetes', 'Cloud'], requiredSkills: ['Go', 'Kubernetes'],
-    url: 'https://example.net/jobs/platform', source: '内置示例', active: true, importedAt: new Date().toISOString(),
-  },
-];
+/** Creates clearly labelled demo records without implying that they are live openings. */
+export function createSampleJobs(profile: CandidateProfile): DiscoveredJob[] {
+  const searchedAt = new Date().toISOString();
+  return [
+    {
+      id: 'demo-frontend-aurora', title: profile.targetRoles[0] ?? '高级前端工程师', company: 'Aurora Labs（演示）',
+      description: '演示岗位：负责数据产品体验，重视 TypeScript、可访问性与工程质量。',
+      location: profile.locations[0] ?? '上海', remote: true, sourceTitle: '内置演示数据（非真实招聘）',
+      sourceUrl: 'https://example.com/jobs/frontend-demo', applyEmail: 'jobs@example.com',
+      emailSourceUrl: 'https://example.com/jobs/frontend-demo', searchedAt, score: 88, confidence: 0.98,
+      matchedSkills: profile.skills.slice(0, 3), missingSkills: ['Accessibility'],
+      reasons: ['岗位方向与候选人档案接近', '支持远程协作'], blockers: [], eligible: true,
+      draft: {
+        to: 'jobs@example.com', subject: `Application for ${profile.targetRoles[0] ?? 'Frontend Engineer'} — ${profile.name}`,
+        body: `Hello Aurora Labs hiring team,\n\nI am applying for this demo role. My resume includes ${profile.skills.slice(0, 3).join(', ') || 'relevant product engineering experience'}.\n\nBest regards,\n${profile.name}`,
+        usedResumeFacts: profile.skills.slice(0, 3),
+      },
+    },
+    {
+      id: 'demo-no-email', title: '平台工程师', company: 'Northstar（演示）',
+      description: '演示岗位：构建云原生开发平台。', location: '深圳', remote: false,
+      sourceTitle: '内置演示数据（非真实招聘）', sourceUrl: 'https://example.net/jobs/platform-demo',
+      searchedAt, score: 52, confidence: 0.9, matchedSkills: [], missingSkills: ['Go', 'Kubernetes'],
+      reasons: ['用于演示无公开邮箱时的拦截状态'], blockers: ['未找到可验证的公开招聘邮箱'], eligible: false,
+    },
+  ];
+}

@@ -1,129 +1,116 @@
 import { existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
-import { createEmailDraft } from '../core/email-template.js';
-import { rankJobs } from '../core/matcher.js';
-import { termsFromText, uniqueTerms } from '../core/text.js';
-import type { AutomationSettings, CandidateProfile, DashboardData, EmailDraft, JobMatch } from '../shared/types.js';
-import { RemotePreference, ResumeFileType } from '../shared/types.js';
-import type { AutomationService } from './automation.js';
-import { config, smtpConfigured } from './config.js';
+import { createDedupeKey } from '../core/dedupe.js';
+import { uniqueTerms } from '../core/text.js';
+import type { CandidateProfile, DashboardData, DiscoveredJob, EmailDraft } from '../shared/types.js';
+import { AiApiStyle, AiProviderKind, DeliveryStatus, ResumeFileType, SmtpPreset } from '../shared/types.js';
+import { AiProviderClient } from './ai-provider.js';
+import { config } from './config.js';
 import type { AppDatabase } from './database.js';
-import { importJsonFeed } from './job-sources.js';
 import type { Mailer } from './mailer.js';
 import { parseAndStoreResume } from './resume.js';
-import { SAMPLE_JOBS } from './sample-jobs.js';
+import { createSampleJobs } from './sample-jobs.js';
+import type { SessionVault } from './session-vault.js';
 
-const profileSchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  email: z.string().email(),
-  fileName: z.string().trim().min(1).max(240),
-  mimeType: z.nativeEnum(ResumeFileType),
-  dataBase64: z.string().min(1),
-  skills: z.array(z.string()).max(100).default([]),
-  yearsExperience: z.number().min(0).max(70),
-  targetRoles: z.array(z.string()).max(30).default([]),
-  locations: z.array(z.string()).max(30).default([]),
-  remotePreference: z.nativeEnum(RemotePreference),
-  minimumSalary: z.number().nonnegative().optional(),
-  language: z.enum(['zh', 'en']).default('zh'),
+const aiConnectionSchema = z.object({
+  kind: z.nativeEnum(AiProviderKind), apiKey: z.string().trim().min(8).max(500), model: z.string().trim().min(1).max(120),
+  baseUrl: z.string().url().max(2_000).optional(), apiStyle: z.nativeEnum(AiApiStyle).optional(),
 });
-
+const smtpConnectionSchema = z.object({
+  preset: z.nativeEnum(SmtpPreset), email: z.string().email(), password: z.string().min(1).max(500),
+  fromName: z.string().trim().min(1).max(100), host: z.string().trim().max(253).optional(),
+  port: z.number().int().min(1).max(65_535).optional(), secure: z.boolean().optional(),
+});
+const profileUploadSchema = z.object({
+  fileName: z.string().trim().min(1).max(240), mimeType: z.nativeEnum(ResumeFileType), dataBase64: z.string().min(1),
+  consent: z.literal(true),
+});
 const profilePatchSchema = z.object({
-  resumeText: z.string().trim().min(20).max(100_000),
-  skills: z.array(z.string()).max(100),
-  yearsExperience: z.number().min(0).max(70),
-  targetRoles: z.array(z.string()).max(30),
-  locations: z.array(z.string()).max(30),
-  remotePreference: z.nativeEnum(RemotePreference),
-  minimumSalary: z.number().nonnegative().optional(),
-  language: z.enum(['zh', 'en']),
+  name: z.string().trim().min(1).max(100), email: z.string().email().optional(),
+  resumeText: z.string().trim().min(20).max(100_000), skills: z.array(z.string()).max(100),
+  yearsExperience: z.number().min(0).max(70), targetRoles: z.array(z.string()).max(20),
+  locations: z.array(z.string()).max(20), summary: z.string().trim().min(1).max(1_500), language: z.enum(['zh', 'en']),
+});
+const draftSchema = z.object({
+  to: z.string().email(), subject: z.string().trim().min(1).max(200), body: z.string().trim().min(20).max(20_000),
+  usedResumeFacts: z.array(z.string().trim().min(1).max(300)).max(12),
 });
 
-const settingsSchema = z.object({
-  enabled: z.boolean(), threshold: z.number().int().min(50).max(100),
-  dailyLimit: z.number().int().min(1).max(30), templateConfirmed: z.boolean(),
-});
-
-export function createApi(database: AppDatabase, mailer: Mailer, automation: AutomationService): express.Express {
+/** Creates the local API without exposing provider or SMTP secrets in responses. */
+export function createApi(database: AppDatabase, mailer: Mailer, vault: SessionVault): express.Express {
   const app = express();
   app.use(express.json({ limit: '8mb' }));
 
-  app.get('/api/dashboard', (_request, response) => response.json(buildDashboard(database)));
+  app.get('/api/dashboard', (_request, response) => response.json(buildDashboard(database, vault)));
+
+  app.post('/api/ai/connect', asyncHandler(async (request, response) => {
+    const input = aiConnectionSchema.parse(request.body);
+    await new AiProviderClient(input).probeWebSearch();
+    vault.setAi(input);
+    response.json(buildDashboard(database, vault));
+  }));
 
   app.post('/api/profile', asyncHandler(async (request, response) => {
-    const input = profileSchema.parse(request.body);
+    const input = profileUploadSchema.parse(request.body);
     const resume = await parseAndStoreResume(input, config.dataDir);
-    const profile: CandidateProfile = {
-      name: input.name, email: input.email, resumeFileName: resume.storedFileName, resumeText: resume.text,
-      skills: uniqueTerms(input.skills.length ? input.skills : termsFromText(resume.text)),
-      yearsExperience: input.yearsExperience, targetRoles: uniqueTerms(input.targetRoles),
-      locations: uniqueTerms(input.locations), remotePreference: input.remotePreference,
-      minimumSalary: input.minimumSalary, language: input.language,
-    };
+    const profile = await new AiProviderClient(vault.getAi()).analyzeResume(resume.text, resume.storedFileName);
     database.saveProfile(profile);
-    response.status(201).json(buildDashboard(database));
+    response.status(201).json(buildDashboard(database, vault));
   }));
 
-  app.patch('/api/profile', asyncHandler(async (request, response) => {
-    const current = database.getProfile();
-    if (!current) throw new Error('请先上传简历');
+  app.patch('/api/profile', (request, response) => {
+    const current = requireProfile(database);
     const patch = profilePatchSchema.parse(request.body);
-    database.saveProfile({ ...current, ...patch, skills: uniqueTerms(patch.skills), targetRoles: uniqueTerms(patch.targetRoles), locations: uniqueTerms(patch.locations) });
-    response.json(buildDashboard(database));
-  }));
-
-  app.post('/api/jobs/sample', (_request, response) => {
-    database.upsertJobs(SAMPLE_JOBS);
-    response.status(201).json(buildDashboard(database));
+    database.saveProfile({
+      ...current, ...patch, skills: uniqueTerms(patch.skills), targetRoles: uniqueTerms(patch.targetRoles),
+      locations: uniqueTerms(patch.locations), resumeFileName: current.resumeFileName,
+    });
+    response.json(buildDashboard(database, vault));
   });
 
-  app.post('/api/jobs/feed', asyncHandler(async (request, response) => {
-    const { url } = z.object({ url: z.string().url().max(2_000) }).parse(request.body);
-    const jobs = await importJsonFeed(url);
-    database.upsertJobs(jobs);
-    response.status(201).json({ imported: jobs.length, dashboard: buildDashboard(database) });
+  app.post('/api/jobs/discover', asyncHandler(async (request, response) => {
+    const { query, limit } = z.object({ query: z.string().trim().max(500).default(''), limit: z.number().int().min(1).max(20).default(10) }).parse(request.body);
+    const result = await new AiProviderClient(vault.getAi()).discoverJobs(requireProfile(database), query, limit);
+    database.replaceJobs(result.jobs);
+    response.status(201).json({ ...result, dashboard: buildDashboard(database, vault) });
   }));
 
-  app.get('/api/jobs/:jobId/draft', (request, response) => {
-    const context = findMatch(database, routeParam(request.params.jobId));
-    response.json(createEmailDraft(context.profile, context.match));
+  app.post('/api/jobs/demo', (_request, response) => {
+    database.replaceJobs(createSampleJobs(requireProfile(database)));
+    response.status(201).json(buildDashboard(database, vault));
   });
 
-  app.post('/api/mail/test', asyncHandler(async (request, response) => {
-    const profile = database.getProfile();
-    if (!profile) throw new Error('请先上传简历');
-    const { recipient } = z.object({ recipient: z.string().email() }).parse(request.body);
-    await mailer.verify();
-    await mailer.send({ to: recipient, subject: '投递舱 SMTP 测试成功', body: `你好 ${profile.name}，\n\nSMTP 连接和发件配置可以正常工作。此邮件没有附带简历。` });
-    const settings = database.getSettings();
-    database.saveSettings({ ...settings, smtpTested: true, enabled: false });
-    response.json(buildDashboard(database));
+  app.post('/api/smtp/connect', asyncHandler(async (request, response) => {
+    const input = smtpConnectionSchema.parse(request.body);
+    await mailer.verify(input);
+    vault.setSmtp(input);
+    response.json(buildDashboard(database, vault));
   }));
 
-  app.put('/api/automation', (request, response) => {
-    const input = settingsSchema.parse(request.body);
-    const current = database.getSettings();
-    if (input.enabled && (!current.smtpTested || !input.templateConfirmed)) {
-      throw new Error('开启自动发送前必须完成 SMTP 测试并确认邮件模板');
-    }
-    const settings: AutomationSettings = { ...input, smtpTested: current.smtpTested };
-    database.saveSettings(settings);
-    response.json(buildDashboard(database));
-    if (settings.enabled) setImmediate(() => void automation.run());
+  app.post('/api/jobs/:jobId/confirmation', (request, response) => {
+    const { job, profile } = requireJobContext(database, routeParam(request.params.jobId));
+    const draft = validateDraft(job, request.body);
+    if (database.hasSent(createDedupeKey(job))) throw new Error('该岗位已成功投递，不能重复发送');
+    response.json({ token: vault.issueConfirmation(job.id, draft, profile.resumeFileName), expiresInSeconds: 600 });
   });
-
-  app.post('/api/automation/run', asyncHandler(async (_request, response) => response.json(await automation.run())));
 
   app.post('/api/jobs/:jobId/send', asyncHandler(async (request, response) => {
-    const settings = database.getSettings();
-    if (!settings.smtpTested) throw new Error('发送前必须先完成 SMTP 测试');
-    const { match } = findMatch(database, routeParam(request.params.jobId));
-    const draft = z.object({ to: z.string().email(), subject: z.string().trim().min(1).max(200), body: z.string().trim().min(20).max(20_000) })
-      .parse(request.body) as EmailDraft;
-    if (draft.to.toLowerCase() !== match.job.applyEmail?.toLowerCase()) throw new Error('收件人必须是岗位公开的申请邮箱');
-    response.status(201).json(await automation.sendMatch(match, draft));
+    const { job, profile } = requireJobContext(database, routeParam(request.params.jobId));
+    const { token, draft: rawDraft } = z.object({ token: z.string().min(20).max(200), draft: draftSchema }).parse(request.body);
+    const draft = validateDraft(job, rawDraft);
+    const dedupeKey = createDedupeKey(job);
+    if (database.hasSent(dedupeKey)) throw new Error('该岗位已成功投递，不能重复发送');
+    vault.consumeConfirmation(token, job.id, draft, profile.resumeFileName);
+    await mailer.send(vault.getSmtp(), draft, profile.resumeFileName);
+    const delivery = {
+      id: randomUUID(), jobId: job.id, dedupeKey, recipient: draft.to, subject: draft.subject,
+      status: DeliveryStatus.Sent, detail: '用户逐封确认后发送', createdAt: new Date().toISOString(),
+    };
+    database.addDelivery(delivery);
+    response.status(201).json(delivery);
   }));
 
   app.get('/api/export', (_request, response) => {
@@ -134,7 +121,7 @@ export function createApi(database: AppDatabase, mailer: Mailer, automation: Aut
   });
 
   app.delete('/api/data', (_request, response) => {
-    database.saveSettings({ ...database.getSettings(), enabled: false });
+    vault.clear();
     database.clear();
     if (existsSync(config.dataDir)) {
       for (const name of readdirSync(config.dataDir)) {
@@ -150,28 +137,28 @@ export function createApi(database: AppDatabase, mailer: Mailer, automation: Aut
   return app;
 }
 
-function buildDashboard(database: AppDatabase): DashboardData {
-  const profile = database.getProfile();
-  return {
-    profile,
-    matches: profile ? rankJobs(profile, database.listJobs()) : [],
-    deliveries: database.listDeliveries(), settings: database.getSettings(),
-    smtp: { configured: smtpConfigured(), from: maskEmail(config.smtp.user) },
-  };
+function buildDashboard(database: AppDatabase, vault: SessionVault): DashboardData {
+  return { profile: database.getProfile(), jobs: database.listJobs(), deliveries: database.listDeliveries(), ai: vault.getAiStatus(), smtp: vault.getSmtpStatus() };
 }
 
-function findMatch(database: AppDatabase, jobId: string): { profile: CandidateProfile; match: JobMatch } {
+function requireProfile(database: AppDatabase): CandidateProfile {
   const profile = database.getProfile();
-  if (!profile) throw new Error('请先上传简历');
-  const match = rankJobs(profile, database.listJobs()).find((item) => item.job.id === jobId);
-  if (!match) throw new Error('岗位不存在');
-  return { profile, match };
+  if (!profile) throw new Error('请先上传并分析简历');
+  return profile;
 }
 
-function maskEmail(email?: string): string | undefined {
-  if (!email) return undefined;
-  const [local, domain] = email.split('@');
-  return domain ? `${local.slice(0, 2)}***@${domain}` : undefined;
+function requireJobContext(database: AppDatabase, jobId: string) {
+  const profile = requireProfile(database);
+  const job = database.findJob(jobId);
+  if (!job) throw new Error('岗位不存在');
+  if (!job.eligible || !job.applyEmail || !job.emailSourceUrl) throw new Error('该岗位缺少可验证的公开招聘邮箱');
+  return { profile, job };
+}
+
+function validateDraft(job: DiscoveredJob, value: unknown): EmailDraft {
+  const draft = draftSchema.parse(value);
+  if (draft.to.toLowerCase() !== job.applyEmail?.toLowerCase()) throw new Error('收件人必须是岗位公开的申请邮箱');
+  return draft;
 }
 
 function routeParam(value: string | string[]): string {
@@ -185,10 +172,7 @@ function errorMessage(error: unknown): string {
   return '请求失败';
 }
 
-function csvCell(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
+function csvCell(value: string): string { return `"${value.replaceAll('"', '""')}"`; }
 function asyncHandler(handler: (request: Request, response: Response) => Promise<unknown>) {
   return (request: Request, response: Response, next: express.NextFunction) => void handler(request, response).catch(next);
 }

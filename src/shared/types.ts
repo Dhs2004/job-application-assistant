@@ -11,72 +11,90 @@ export enum DeliveryStatus {
   PermanentFailure = 'permanent_failure',
 }
 
-export enum RemotePreference {
-  Any = 'any',
-  Remote = 'remote',
-  Onsite = 'onsite',
+export enum AiProviderKind {
+  OpenAI = 'openai',
+  Qwen = 'qwen',
+  Custom = 'custom',
+}
+
+export enum AiApiStyle {
+  Responses = 'responses',
+  QwenChat = 'qwen_chat',
+}
+
+export enum SmtpPreset {
+  Gmail = 'gmail',
+  Outlook = 'outlook',
+  QQ = 'qq',
+  NetEase = 'netease',
+  Custom = 'custom',
+}
+
+export interface AiConnectionInput {
+  kind: AiProviderKind;
+  apiKey: string;
+  model: string;
+  baseUrl?: string;
+  apiStyle?: AiApiStyle;
+}
+
+export interface AiConnectionStatus {
+  connected: boolean;
+  kind?: AiProviderKind;
+  model?: string;
+}
+
+export interface SmtpConnectionInput {
+  preset: SmtpPreset;
+  email: string;
+  password: string;
+  fromName: string;
+  host?: string;
+  port?: number;
+  secure?: boolean;
 }
 
 export interface CandidateProfile {
   name: string;
-  email: string;
+  email?: string;
   resumeFileName: string;
   resumeText: string;
   skills: string[];
   yearsExperience: number;
   targetRoles: string[];
   locations: string[];
-  remotePreference: RemotePreference;
-  minimumSalary?: number;
+  summary: string;
   language: 'zh' | 'en';
 }
 
-export type PublicCandidateProfile = CandidateProfile;
+export interface EmailDraft {
+  to: string;
+  subject: string;
+  body: string;
+  usedResumeFacts: string[];
+}
 
-export interface JobRecord {
+export interface DiscoveredJob {
   id: string;
   title: string;
   company: string;
   description: string;
   location: string;
   remote: boolean;
-  salaryMin?: number;
-  salaryMax?: number;
-  currency?: string;
-  skills: string[];
-  requiredSkills: string[];
+  publishedAt?: string;
+  sourceTitle: string;
+  sourceUrl: string;
   applyEmail?: string;
-  url: string;
-  source: string;
-  active: boolean;
-  importedAt: string;
-}
-
-export interface MatchBreakdown {
-  requiredSkills: number;
-  relatedSkills: number;
-  experience: number;
-  location: number;
-  roleAndSalary: number;
-}
-
-export interface JobMatch {
-  job: JobRecord;
+  emailSourceUrl?: string;
+  searchedAt: string;
   score: number;
-  eligible: boolean;
+  confidence: number;
   matchedSkills: string[];
   missingSkills: string[];
   reasons: string[];
   blockers: string[];
-  breakdown: MatchBreakdown;
-}
-
-export interface AutomationSettings {
-  enabled: boolean;
-  threshold: number;
-  dailyLimit: number;
-  templateConfirmed: boolean;
-  smtpTested: boolean;
+  eligible: boolean;
+  draft?: EmailDraft;
 }
 
 export interface DeliveryRecord {
@@ -90,16 +108,10 @@ export interface DeliveryRecord {
   createdAt: string;
 }
 
-export interface EmailDraft {
-  to: string;
-  subject: string;
-  body: string;
-}
-
 export interface DashboardData {
-  profile?: PublicCandidateProfile;
-  matches: JobMatch[];
+  profile?: CandidateProfile;
+  jobs: DiscoveredJob[];
   deliveries: DeliveryRecord[];
-  settings: AutomationSettings;
-  smtp: { configured: boolean; from?: string };
+  ai: AiConnectionStatus;
+  smtp: { connected: boolean; email?: string };
 }

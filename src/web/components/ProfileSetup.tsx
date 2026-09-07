@@ -1,66 +1,71 @@
 import { useState, type FormEvent } from 'react';
-import { RemotePreference } from '../../shared/types';
+import type { AiConnectionInput } from '../../shared/types';
+import { AiApiStyle, AiProviderKind } from '../../shared/types';
 
 interface Props {
+  aiConnected: boolean;
   busy: boolean;
+  onConnect: (payload: AiConnectionInput) => Promise<void>;
   onSubmit: (payload: unknown) => Promise<void>;
 }
 
-export function ProfileSetup({ busy, onSubmit }: Props) {
+export function ProfileSetup({ aiConnected, busy, onConnect, onSubmit }: Props) {
+  const [kind, setKind] = useState(AiProviderKind.OpenAI);
+  const [apiKey, setApiKey] = useState('');
+  const [model, setModel] = useState('gpt-5-mini');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [apiStyle, setApiStyle] = useState(AiApiStyle.Responses);
   const [file, setFile] = useState<File>();
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [roles, setRoles] = useState('');
-  const [skills, setSkills] = useState('');
-  const [locations, setLocations] = useState('');
-  const [years, setYears] = useState(0);
-  const [remote, setRemote] = useState(RemotePreference.Any);
+  const [consent, setConsent] = useState(false);
 
-  async function submit(event: FormEvent) {
+  function changeKind(next: AiProviderKind) {
+    setKind(next);
+    if (next === AiProviderKind.OpenAI) { setModel('gpt-5-mini'); setApiStyle(AiApiStyle.Responses); }
+    if (next === AiProviderKind.Qwen) { setModel('qwen-plus'); setApiStyle(AiApiStyle.QwenChat); }
+  }
+
+  async function connect(event: FormEvent) {
+    event.preventDefault();
+    await onConnect({ kind, apiKey, model, ...(kind === AiProviderKind.Custom ? { baseUrl, apiStyle } : {}) });
+  }
+
+  async function upload(event: FormEvent) {
     event.preventDefault();
     if (!file) throw new Error('请选择简历文件');
-    const dataBase64 = await toBase64(file);
-    await onSubmit({
-      name, email, fileName: file.name, mimeType: file.type || mimeFromName(file.name), dataBase64,
-      skills: split(skills), yearsExperience: years, targetRoles: split(roles), locations: split(locations),
-      remotePreference: remote, language: 'zh',
-    });
+    if (!consent) throw new Error('请先确认 AI 简历分析授权');
+    await onSubmit({ fileName: file.name, mimeType: file.type || mimeFromName(file.name), dataBase64: await toBase64(file), consent: true });
   }
 
   return (
     <main className="onboarding-shell">
       <section className="onboarding-copy">
-        <span className="eyebrow">LOCAL-FIRST CAREER TOOL</span>
-        <h1>把求职从<br /><em>重复劳动</em>里解放出来。</h1>
-        <p>在你的电脑上读取简历、解释每个匹配分数，并且只在你打开总开关后发送申请。</p>
-        <div className="trust-note"><span>01</span> 简历不上传到第三方岗位源</div>
-        <div className="trust-note"><span>02</span> 每封邮件都有去重与限额</div>
+        <span className="eyebrow">AI-ASSISTED, HUMAN-CONFIRMED</span>
+        <h1>让 AI 找到机会，<br />让你决定<em>每一次投递</em>。</h1>
+        <p>联网搜索真实岗位，核验公开招聘邮箱，生成有事实依据的邮件草稿。</p>
+        <div className="trust-note"><span>01</span> API Key 和邮箱密码只存在服务内存</div>
+        <div className="trust-note"><span>02</span> 没有逐封确认，不会发送邮件</div>
       </section>
-      <form className="profile-card" onSubmit={(event) => void submit(event)}>
-        <div className="step-label">建立你的投递档案 <strong>1 / 2</strong></div>
-        <label>你的名字<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="用于邮件落款" /></label>
-        <label>发件邮箱<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" /></label>
-        <label className="file-drop">
-          <input required type="file" accept=".pdf,.docx,.txt" onChange={(event) => setFile(event.target.files?.[0])} />
-          <b>{file ? file.name : '拖入或选择简历'}</b><span>PDF / DOCX / TXT，最大 5 MB</span>
-        </label>
-        <div className="field-grid">
-          <label>目标岗位<input required value={roles} onChange={(event) => setRoles(event.target.value)} placeholder="前端工程师, AI 产品" /></label>
-          <label>经验年限<input type="number" min="0" max="70" value={years} onChange={(event) => setYears(Number(event.target.value))} /></label>
-        </div>
-        <label>核心技能（可留空自动提取）<input value={skills} onChange={(event) => setSkills(event.target.value)} placeholder="React, TypeScript, Python" /></label>
-        <div className="field-grid">
-          <label>意向地点<input value={locations} onChange={(event) => setLocations(event.target.value)} placeholder="上海, 杭州" /></label>
-          <label>工作方式<select value={remote} onChange={(event) => setRemote(event.target.value as RemotePreference)}><option value="any">不限</option><option value="remote">远程</option><option value="onsite">现场</option></select></label>
-        </div>
-        <button className="primary wide" disabled={busy}>{busy ? '正在读取简历…' : '进入投递舱 →'}</button>
-      </form>
+      {!aiConnected ? (
+        <form className="profile-card" onSubmit={(event) => void connect(event)}>
+          <div className="step-label">连接 AI Provider <strong>1 / 2</strong></div>
+          <label>Provider<select value={kind} onChange={(event) => changeKind(event.target.value as AiProviderKind)}><option value="openai">OpenAI</option><option value="qwen">阿里云百炼 / Qwen</option><option value="custom">OpenAI-compatible</option></select></label>
+          <label>模型<input required value={model} onChange={(event) => setModel(event.target.value)} /></label>
+          {kind === AiProviderKind.Custom && <><label>HTTPS Base URL<input required type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.example.com/v1" /></label><label>API 样式<select value={apiStyle} onChange={(event) => setApiStyle(event.target.value as AiApiStyle)}><option value="responses">Responses API</option><option value="qwen_chat">Chat Completions + Search</option></select></label></>}
+          <label>API Key<input required type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" /></label>
+          <p className="form-note">连接时会发起一次联网能力探测。Key 不会写入数据库或浏览器存储。</p>
+          <button className="primary wide" disabled={busy}>{busy ? '正在探测…' : '验证并继续 →'}</button>
+        </form>
+      ) : (
+        <form className="profile-card" onSubmit={(event) => void upload(event)}>
+          <div className="step-label">上传简历 <strong>2 / 2</strong></div>
+          <label className="file-drop"><input required type="file" accept=".pdf,.docx,.txt" onChange={(event) => setFile(event.target.files?.[0])} /><b>{file ? file.name : '拖入或选择简历'}</b><span>PDF / DOCX / TXT，最大 5 MB</span></label>
+          <label className="consent-row"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>我同意将简历正文发送给已选的 AI Provider，用于提取求职档案和搜索岗位。</span></label>
+          <p className="form-note">简历副本保存在本机 `.data/`；它不会发给岗位网站。</p>
+          <button className="primary wide" disabled={busy || !consent}>{busy ? 'AI 正在读取…' : '分析简历并进入工作台 →'}</button>
+        </form>
+      )}
     </main>
   );
-}
-
-function split(value: string): string[] {
-  return value.split(/[,，、]/).map((item) => item.trim()).filter(Boolean);
 }
 
 function mimeFromName(name: string): string {

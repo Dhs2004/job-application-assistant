@@ -1,4 +1,4 @@
-import type { AutomationSettings, DashboardData, DeliveryRecord, EmailDraft } from '../shared/types';
+import type { AiConnectionInput, DashboardData, DeliveryRecord, EmailDraft, SmtpConnectionInput } from '../shared/types';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -9,16 +9,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
 }
 
+const post = <T>(url: string, body?: unknown) => request<T>(url, { method: 'POST', body: JSON.stringify(body ?? {}) });
+
 export const api = {
   dashboard: () => request<DashboardData>('/api/dashboard'),
-  uploadProfile: (payload: unknown) => request<DashboardData>('/api/profile', { method: 'POST', body: JSON.stringify(payload) }),
+  connectAi: (payload: AiConnectionInput) => post<DashboardData>('/api/ai/connect', payload),
+  uploadProfile: (payload: unknown) => post<DashboardData>('/api/profile', payload),
   updateProfile: (payload: unknown) => request<DashboardData>('/api/profile', { method: 'PATCH', body: JSON.stringify(payload) }),
-  loadSamples: () => request<DashboardData>('/api/jobs/sample', { method: 'POST' }),
-  importFeed: (url: string) => request<{ imported: number; dashboard: DashboardData }>('/api/jobs/feed', { method: 'POST', body: JSON.stringify({ url }) }),
-  draft: (jobId: string) => request<EmailDraft>(`/api/jobs/${encodeURIComponent(jobId)}/draft`),
-  testMail: (recipient: string) => request<DashboardData>('/api/mail/test', { method: 'POST', body: JSON.stringify({ recipient }) }),
-  saveAutomation: (settings: Omit<AutomationSettings, 'smtpTested'>) => request<DashboardData>('/api/automation', { method: 'PUT', body: JSON.stringify(settings) }),
-  runAutomation: () => request<{ sent: number; skipped: number }>('/api/automation/run', { method: 'POST' }),
-  send: (jobId: string, draft: EmailDraft) => request<DeliveryRecord>(`/api/jobs/${encodeURIComponent(jobId)}/send`, { method: 'POST', body: JSON.stringify(draft) }),
+  discover: (query: string) => post<{ jobs: DashboardData['jobs']; filtered: number; dashboard: DashboardData }>('/api/jobs/discover', { query, limit: 10 }),
+  loadDemo: () => post<DashboardData>('/api/jobs/demo'),
+  connectSmtp: (payload: SmtpConnectionInput) => post<DashboardData>('/api/smtp/connect', payload),
+  confirm: (jobId: string, draft: EmailDraft) => post<{ token: string }>(`/api/jobs/${encodeURIComponent(jobId)}/confirmation`, draft),
+  send: (jobId: string, token: string, draft: EmailDraft) => post<DeliveryRecord>(`/api/jobs/${encodeURIComponent(jobId)}/send`, { token, draft }),
   clear: () => request<void>('/api/data', { method: 'DELETE' }),
 };

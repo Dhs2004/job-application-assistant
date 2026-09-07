@@ -1,43 +1,50 @@
-import type { EmailDraft, JobMatch } from '../../shared/types';
+import type { DiscoveredJob, EmailDraft } from '../../shared/types';
 
 interface Props {
-  match?: JobMatch;
+  job?: DiscoveredJob;
   draft?: EmailDraft;
   busy: boolean;
+  smtpConnected: boolean;
+  sent: boolean;
   onDraftChange: (draft: EmailDraft) => void;
   onSend: () => Promise<void>;
 }
 
-export function MatchDetail({ match, draft, busy, onDraftChange, onSend }: Props) {
-  if (!match) return <aside className="detail-panel empty"><span>选择一个岗位</span><p>这里会展示匹配证据与邮件草稿。</p></aside>;
+export function MatchDetail({ job, draft, busy, smtpConnected, sent, onDraftChange, onSend }: Props) {
+  if (!job) return <aside className="detail-panel empty"><span>选择一个岗位</span><p>这里会展示来源、匹配证据与 AI 草稿。</p></aside>;
   return (
     <aside className="detail-panel">
-      <div className="detail-kicker">MATCH REPORT / {match.score}</div>
-      <h2>{match.job.title}</h2>
-      <a href={match.job.url} target="_blank" rel="noreferrer">{match.job.company} ↗</a>
-      <div className="breakdown">
-        {Object.entries(match.breakdown).map(([name, score]) => (
-          <div key={name}><span>{label(name)}</span><i><b style={{ width: `${score / max(name) * 100}%` }} /></i><strong>+{score}</strong></div>
-        ))}
-      </div>
+      <div className="detail-kicker">AI MATCH / {job.score} · 置信度 {Math.round(job.confidence * 100)}%</div>
+      <h2>{job.title}</h2>
+      <a href={job.sourceUrl} target="_blank" rel="noreferrer">{job.sourceTitle} ↗</a>
       <section className="evidence">
-        <h4>为什么匹配</h4>
-        {match.reasons.map((reason) => <p key={reason}>✓ {reason}</p>)}
-        {match.blockers.map((reason) => <p className="warning" key={reason}>! {reason}</p>)}
+        <h4>匹配证据</h4>
+        {job.reasons.map((reason) => <p key={reason}>✓ {reason}</p>)}
+        {job.missingSkills.map((skill) => <p key={skill}>○ 待补充：{skill}</p>)}
+        {job.blockers.map((reason) => <p className="warning" key={reason}>! {reason}</p>)}
+      </section>
+      <section className="source-proof">
+        <span>搜索时间 {new Date(job.searchedAt).toLocaleString()}</span>
+        {job.emailSourceUrl ? <a href={job.emailSourceUrl} target="_blank" rel="noreferrer">公开招聘邮箱来源 ↗</a> : <span>未找到可验证邮箱，请从岗位页申请</span>}
       </section>
       {draft && (
         <section className="draft">
           <div className="section-head"><h4>申请邮件</h4><span>发送前可编辑</span></div>
-          <input value={draft.subject} onChange={(event) => onDraftChange({ ...draft, subject: event.target.value })} />
-          <textarea value={draft.body} onChange={(event) => onDraftChange({ ...draft, body: event.target.value })} />
-          <button className="primary wide" disabled={busy || !match.eligible} onClick={() => void onSend()}>{busy ? '发送中…' : '确认并投递'}</button>
+          <input aria-label="邮件主题" value={draft.subject} onChange={(event) => onDraftChange({ ...draft, subject: event.target.value })} />
+          <textarea aria-label="邮件正文" value={draft.body} onChange={(event) => onDraftChange({ ...draft, body: event.target.value })} />
+          <small>依据的简历事实：{draft.usedResumeFacts.join('、') || '未标注'}</small>
+          <button className="primary wide" disabled={busy || !job.eligible || !smtpConnected || sent} onClick={() => void onSend()}>
+            {sendButtonLabel(sent, busy, smtpConnected)}
+          </button>
         </section>
       )}
     </aside>
   );
 }
 
-const LABELS: Record<string, string> = { requiredSkills: '必备技能', relatedSkills: '相关能力', experience: '经验', location: '地点', roleAndSalary: '岗位偏好' };
-const MAX: Record<string, number> = { requiredSkills: 45, relatedSkills: 20, experience: 15, location: 10, roleAndSalary: 10 };
-function label(name: string) { return LABELS[name] ?? name; }
-function max(name: string) { return MAX[name] ?? 1; }
+function sendButtonLabel(sent: boolean, busy: boolean, smtpConnected: boolean): string {
+  if (sent) return '已投递';
+  if (busy) return '确认中…';
+  if (!smtpConnected) return '先连接发件邮箱';
+  return '确认并投递这一封';
+}
