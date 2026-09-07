@@ -23,14 +23,19 @@ describe('AI provider output validation', () => {
         { title: 'Missing every required field' },
       ],
     };
-    const request = async () => new Response(JSON.stringify({
+    let requestBody: Record<string, unknown> = {};
+    const request = async (_url: string | URL | Request, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({
       output_text: JSON.stringify(payload), output: [{ type: 'web_search_call' }],
-    }), { status: 200 });
+      }), { status: 200 });
+    };
     const client = new AiProviderClient({ kind: AiProviderKind.OpenAI, apiKey: 'test-secret', model: 'test-model' }, request as typeof fetch);
     const result = await client.discoverJobs(profile, '', 10);
     expect(result.filtered).toBe(1);
     expect(result.jobs).toHaveLength(1);
     expect(result.jobs[0]).toMatchObject({ eligible: true, applyEmail: 'jobs@example.com' });
+    expect(requestBody).toMatchObject({ text: { format: { type: 'json_schema', name: 'job_discovery' } } });
   });
 
   it('rejects a private custom provider endpoint before making a request', async () => {
@@ -66,5 +71,18 @@ describe('AI provider output validation', () => {
     const request = async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); };
     const client = new AiProviderClient({ kind: AiProviderKind.OpenAI, apiKey: 'test-secret', model: 'test-model' }, request as typeof fetch);
     await expect(client.probeWebSearch()).rejects.toThrow('连接探测超过 2 分钟');
+  });
+
+  it('retries one malformed structured response', async () => {
+    let calls = 0;
+    const validProfile = { name: 'Candidate', skills: ['TypeScript'], yearsExperience: 4, targetRoles: ['Engineer'], locations: ['Shanghai'], summary: 'Engineer', language: 'en' };
+    const request = async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ output_text: calls === 1 ? '{"name":"broken"' : JSON.stringify(validProfile) }), { status: 200 });
+    };
+    const client = new AiProviderClient({ kind: AiProviderKind.OpenAI, apiKey: 'test-secret', model: 'test-model' }, request as typeof fetch);
+    const result = await client.analyzeResume(profile.resumeText, profile.resumeFileName);
+    expect(result.name).toBe('Candidate');
+    expect(calls).toBe(2);
   });
 });
