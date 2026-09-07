@@ -23,6 +23,12 @@ export enum AiApiStyle {
   QwenChat = 'qwen_chat',
 }
 
+export enum ByteDanceModel {
+  Terra = 'gpt-5.6-terra',
+  Sol = 'gpt-5.6-sol',
+  Gpt55 = 'gpt-5.5-2026-04-24',
+}
+
 export enum SmtpPreset {
   Gmail = 'gmail',
   Outlook = 'outlook',

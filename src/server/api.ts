@@ -6,9 +6,9 @@ import { z } from 'zod';
 import { createDedupeKey } from '../core/dedupe.js';
 import { uniqueTerms } from '../core/text.js';
 import type { CandidateProfile, DashboardData, DiscoveredJob, EmailDraft } from '../shared/types.js';
-import { AiApiStyle, AiProviderKind, DeliveryStatus, ResumeFileType, SmtpPreset } from '../shared/types.js';
+import { AiApiStyle, AiProviderKind, ByteDanceModel, DeliveryStatus, ResumeFileType, SmtpPreset } from '../shared/types.js';
 import { AiProviderClient } from './ai-provider.js';
-import { config } from './config.js';
+import { config, resolveByteDanceKey } from './config.js';
 import type { AppDatabase } from './database.js';
 import type { Mailer } from './mailer.js';
 import { parseAndStoreResume } from './resume.js';
@@ -47,7 +47,14 @@ export function createApi(database: AppDatabase, mailer: Mailer, vault: SessionV
   app.get('/api/dashboard', (_request, response) => response.json(buildDashboard(database, vault)));
 
   app.post('/api/ai/connect', asyncHandler(async (request, response) => {
-    const input = { ...aiConnectionSchema.parse(request.body), sessionId: randomUUID() };
+    const submitted = aiConnectionSchema.parse(request.body);
+    const input = {
+      ...submitted,
+      apiKey: submitted.kind === AiProviderKind.ByteDanceAzure
+        ? resolveByteDanceKey(z.nativeEnum(ByteDanceModel).parse(submitted.model), submitted.apiKey)
+        : submitted.apiKey,
+      sessionId: randomUUID(),
+    };
     await new AiProviderClient(input).probeWebSearch();
     vault.setAi(input);
     response.json(buildDashboard(database, vault));

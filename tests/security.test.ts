@@ -3,14 +3,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createDedupeKey } from '../src/core/dedupe.js';
+import { config, resolveByteDanceKey } from '../src/server/config.js';
 import { SessionVault } from '../src/server/session-vault.js';
 import type { DiscoveredJob, EmailDraft } from '../src/shared/types.js';
-import { AiProviderKind, ResumeFileType, SmtpPreset } from '../src/shared/types.js';
+import { AiProviderKind, ByteDanceModel, ResumeFileType, SmtpPreset } from '../src/shared/types.js';
 import { parseAndStoreResume } from '../src/server/resume.js';
 
 const draft: EmailDraft = { to: 'jobs@example.com', subject: 'Application', body: 'A sufficiently long application body.', usedResumeFacts: ['TypeScript'] };
 
 describe('secret and confirmation boundaries', () => {
+  it('unlocks and rotates local model keys without returning them in status', () => {
+    config.localAccessPassword = 'local-password';
+    config.byteDanceKeys[ByteDanceModel.Sol] = ['first-test-key', 'second-test-key'];
+    expect(() => resolveByteDanceKey(ByteDanceModel.Sol, 'wrong-password')).toThrow('访问密码错误');
+    expect(resolveByteDanceKey(ByteDanceModel.Sol, 'local-password')).toBe('first-test-key');
+    expect(resolveByteDanceKey(ByteDanceModel.Sol, 'local-password')).toBe('second-test-key');
+  });
+
   it('keeps session credentials in memory and returns only masked status', () => {
     const vault = new SessionVault();
     vault.setAi({ kind: AiProviderKind.OpenAI, apiKey: 'secret-key', model: 'gpt-test' });

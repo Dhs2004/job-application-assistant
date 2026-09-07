@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import type { AiConnectionInput } from '../../shared/types';
-import { AiApiStyle, AiProviderKind } from '../../shared/types';
+import { AiApiStyle, AiProviderKind, ByteDanceModel } from '../../shared/types';
 
-const BYTEDANCE_MODELS = ['gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.5-2026-04-24'];
+const BYTEDANCE_MODELS = Object.values(ByteDanceModel);
 
 interface Props {
   aiConnected: boolean;
@@ -54,8 +54,8 @@ export function ProfileSetup({ aiConnected, busy, onConnect, onSubmit }: Props) 
           <label>Provider<select value={kind} onChange={(event) => changeKind(event.target.value as AiProviderKind)}><option value="openai">OpenAI</option><option value="qwen">阿里云百炼 / Qwen</option><option value="bytedance_azure">字节 Azure Responses</option><option value="custom">OpenAI-compatible</option></select></label>
           <label>模型{kind === AiProviderKind.ByteDanceAzure ? <select value={model} onChange={(event) => setModel(event.target.value)}>{BYTEDANCE_MODELS.map((name) => <option key={name} value={name}>{name}</option>)}</select> : <input required value={model} onChange={(event) => setModel(event.target.value)} />}</label>
           {kind === AiProviderKind.Custom && <><label>HTTPS Base URL<input required type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.example.com/v1" /></label><label>API 样式<select value={apiStyle} onChange={(event) => setApiStyle(event.target.value as AiApiStyle)}><option value="responses">Responses API</option><option value="qwen_chat">Chat Completions + Search</option></select></label></>}
-          <label>API Key<input required type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" /></label>
-          <p className="form-note">连接时会发起一次联网能力探测。字节预设会自动使用 Azure Responses endpoint、`2025-04-01-preview` 和同一服务会话 ID。Key 不会写入数据库或浏览器存储。</p>
+          <label>{kind === AiProviderKind.ByteDanceAzure ? '访问密码' : 'API Key'}<input required type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" /></label>
+          <p className="form-note">连接时会发起一次联网能力探测。字节预设使用访问密码解锁服务端的本地 Key 池，浏览器不会读取真实 Key。</p>
           <button className="primary wide" disabled={busy}>{busy ? '正在探测…' : '验证并继续 →'}</button>
         </form>
       ) : (

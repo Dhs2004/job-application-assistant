@@ -34,14 +34,25 @@ npm run dev
 
 - OpenAI 使用 Responses API 的 `web_search` 工具。
 - Qwen 使用百炼 OpenAI-compatible Chat Completions 接口的联网搜索功能。
-- 字节 Azure Responses 预设支持 `gpt-5.6-terra`、`gpt-5.6-sol` 和 `gpt-5.5-2026-04-24`。应用使用 `2025-04-01-preview` API，并为同一服务会话复用 `session_id`。Key 需要在页面输入，不得写入仓库。
+- 字节 Azure Responses 预设支持 `gpt-5.6-terra`、`gpt-5.6-sol` 和 `gpt-5.5-2026-04-24`。应用使用 `2025-04-01-preview` API，并为同一服务会话复用 `session_id`。页面通过本地密码解锁 `.env` 中的 Key 池。
 - 自定义 Provider 必须使用公开 HTTPS Base URL，并在能力探测中返回联网搜索证据。纯文本模型不能用于岗位发现。
 
 AI 输出始终被视为不可信输入。服务端会校验字段长度、HTTPS URL、邮箱、来源关系和返回数量，并丢弃无来源或格式错误的岗位。
 
+字节预设可以使用本机 `.env` 中的 Key 池，页面只需输入本地访问密码：
+
+```dotenv
+APP_ACCESS_PASSWORD=choose-a-local-password
+BYTEDANCE_GPT_5_6_TERRA_KEYS=key-one
+BYTEDANCE_GPT_5_6_SOL_KEYS=key-one,key-two
+BYTEDANCE_GPT_5_5_KEYS=key-one,key-two
+```
+
+服务端会按模型轮询 Key。`.env` 已被 Git 忽略，不得提交。该密码只是绑定 `127.0.0.1` 的本地访问门禁，不能作为公网身份认证方案。
+
 ## 隐私与安全
 
-- AI API Key 和 SMTP 应用专用密码只保存在 Node 进程内存中，不写入 SQLite、文件、日志或浏览器存储。重启服务后需重新输入。
+- 通过页面输入的 AI API Key 和 SMTP 应用专用密码只保存在 Node 进程内存中，不写入 SQLite、日志或浏览器存储。字节预设的 Key 池只从被 Git 忽略的本机 `.env` 读取。
 - 简历、岗位和投递记录保存在 `.data/`。该目录已被 Git 忽略。
 - 简历正文会在用户同意后发送给已选 AI Provider，但不会发送给岗位网站。
 - 应用不猜测私人邮箱，不绕过登录、验证码、访问控制或站点反自动化措施。
