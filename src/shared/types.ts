@@ -14,6 +14,7 @@ export enum DeliveryStatus {
 export enum AiProviderKind {
   OpenAI = 'openai',
   Qwen = 'qwen',
+  ByteDanceAzure = 'bytedance_azure',
   Custom = 'custom',
 }
 
@@ -36,6 +37,7 @@ export interface AiConnectionInput {
   model: string;
   baseUrl?: string;
   apiStyle?: AiApiStyle;
+  sessionId?: string;
 }
 
 export interface AiConnectionStatus {

@@ -4,6 +4,9 @@ import { z } from 'zod';
 import type { AiConnectionInput, CandidateProfile, DiscoveredJob, EmailDraft } from '../shared/types.js';
 import { AiApiStyle, AiProviderKind } from '../shared/types.js';
 
+const BYTEDANCE_AZURE_ENDPOINT = 'https://search.bytedance.net/gpt/openapi/online/responses';
+const BYTEDANCE_AZURE_API_VERSION = '2025-04-01-preview';
+
 const profileResultSchema = z.object({
   name: z.string().trim().min(1).max(100).default('未识别姓名'),
   email: z.string().email().optional(),
@@ -82,16 +85,17 @@ export class AiProviderClient {
 
   private async complete(prompt: string, webSearch: boolean, maxTokens: number): Promise<string> {
     const style = resolveApiStyle(this.input);
-    const baseUrl = normalizeBaseUrl(this.input);
+    const endpoint = resolveEndpoint(this.input, style);
     if (style === AiApiStyle.Responses) {
-      const response = await postJson(this.request, `${baseUrl}/responses`, this.input.apiKey, {
+      const response = await postJson(this.request, endpoint, requestHeaders(this.input), {
         model: this.input.model, input: prompt, max_output_tokens: maxTokens,
+        ...(this.input.kind === AiProviderKind.ByteDanceAzure ? { reasoning: { effort: 'xhigh', summary: 'auto' } } : {}),
         ...(webSearch ? { tools: [{ type: 'web_search' }] } : {}),
       });
       if (webSearch) assertWebSearchEvidence(response, style);
       return extractResponseText(response);
     }
-    const response = await postJson(this.request, `${baseUrl}/chat/completions`, this.input.apiKey, {
+    const response = await postJson(this.request, endpoint, requestHeaders(this.input), {
       model: this.input.model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens,
       ...(webSearch ? { enable_search: true, search_options: { forced_search: true, enable_source: true } } : {}),
     });
@@ -113,13 +117,35 @@ function normalizeBaseUrl(input: AiConnectionInput): string {
   return url.toString().replace(/\/$/, '');
 }
 
+function resolveEndpoint(input: AiConnectionInput, style: AiApiStyle): string {
+  if (input.kind === AiProviderKind.ByteDanceAzure) {
+    const url = new URL(BYTEDANCE_AZURE_ENDPOINT);
+    url.searchParams.set('api-version', BYTEDANCE_AZURE_API_VERSION);
+    return url.toString();
+  }
+  const path = style === AiApiStyle.Responses ? 'responses' : 'chat/completions';
+  return `${normalizeBaseUrl(input)}/${path}`;
+}
+
+function requestHeaders(input: AiConnectionInput): Record<string, string> {
+  if (input.kind === AiProviderKind.ByteDanceAzure) {
+    return {
+      'api-key': input.apiKey,
+      'content-type': 'application/json',
+      ...(input.sessionId ? { session_id: input.sessionId } : {}),
+    };
+  }
+  return { authorization: `Bearer ${input.apiKey}`, 'content-type': 'application/json' };
+}
+
 function resolveApiStyle(input: AiConnectionInput): AiApiStyle {
+  if (input.kind === AiProviderKind.ByteDanceAzure) return AiApiStyle.Responses;
   if (input.kind === AiProviderKind.Qwen) return AiApiStyle.QwenChat;
   return input.apiStyle ?? AiApiStyle.Responses;
 }
 
-async function postJson(request: typeof fetch, url: string, apiKey: string, body: unknown): Promise<unknown> {
-  const response = await request(url, { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(90_000) });
+async function postJson(request: typeof fetch, url: string, headers: Record<string, string>, body: unknown): Promise<unknown> {
+  const response = await request(url, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(90_000) });
   const text = await response.text();
   if (!response.ok) throw new Error(`Provider 请求失败（HTTP ${response.status}）：${safeProviderError(text)}`);
   return JSON.parse(text) as unknown;

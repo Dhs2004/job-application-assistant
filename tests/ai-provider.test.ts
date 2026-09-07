@@ -40,4 +40,25 @@ describe('AI provider output validation', () => {
     await expect(client.probeWebSearch()).rejects.toThrow('私有网络');
     expect(called).toBe(false);
   });
+
+  it('uses the Azure Responses endpoint and stable session header for the ByteDance preset', async () => {
+    let capturedUrl = '';
+    let capturedInit: RequestInit | undefined;
+    const request = async (url: string | URL | Request, init?: RequestInit) => {
+      capturedUrl = String(url);
+      capturedInit = init;
+      return new Response(JSON.stringify({ output_text: '2026-09-07', output: [{ type: 'web_search_call' }] }), { status: 200 });
+    };
+    const client = new AiProviderClient({
+      kind: AiProviderKind.ByteDanceAzure, apiKey: 'test-key', model: 'gpt-5.6-terra', sessionId: 'stable-session-id',
+    }, request as typeof fetch);
+
+    await client.probeWebSearch();
+
+    expect(capturedUrl).toBe('https://search.bytedance.net/gpt/openapi/online/responses?api-version=2025-04-01-preview');
+    expect(capturedInit?.headers).toMatchObject({ 'api-key': 'test-key', session_id: 'stable-session-id' });
+    expect(JSON.parse(String(capturedInit?.body))).toMatchObject({
+      model: 'gpt-5.6-terra', reasoning: { effort: 'xhigh', summary: 'auto' }, tools: [{ type: 'web_search' }],
+    });
+  });
 });

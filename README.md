@@ -4,7 +4,7 @@
 
 ## 主要功能
 
-- 支持 OpenAI、阿里云百炼 / Qwen 和具备联网搜索能力的 OpenAI-compatible Provider。
+- 支持 OpenAI、阿里云百炼 / Qwen、字节 Azure Responses 和具备联网搜索能力的 OpenAI-compatible Provider。
 - 解析 PDF、DOCX 和 TXT 简历，在明示同意后调用 AI 提取候选人档案。
 - 展示岗位页、邮箱来源、搜索时间、匹配理由、能力缺口和置信度。
 - 只允许向来源可验证的公开招聘邮箱发送。
@@ -34,6 +34,7 @@ npm run dev
 
 - OpenAI 使用 Responses API 的 `web_search` 工具。
 - Qwen 使用百炼 OpenAI-compatible Chat Completions 接口的联网搜索功能。
+- 字节 Azure Responses 预设支持 `gpt-5.6-terra`、`gpt-5.6-sol` 和 `gpt-5.5-2026-04-24`。应用使用 `2025-04-01-preview` API，并为同一服务会话复用 `session_id`。Key 需要在页面输入，不得写入仓库。
 - 自定义 Provider 必须使用公开 HTTPS Base URL，并在能力探测中返回联网搜索证据。纯文本模型不能用于岗位发现。
 
 AI 输出始终被视为不可信输入。服务端会校验字段长度、HTTPS URL、邮箱、来源关系和返回数量，并丢弃无来源或格式错误的岗位。

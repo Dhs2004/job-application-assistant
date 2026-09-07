@@ -8,3 +8,5 @@
 依赖方向为 `web/server -> shared/core`。`core` 不依赖 React、Express、SQLite 或 SMTP。
 
 AI API Key、SMTP 应用专用密码和确认 token 由 `SessionVault` 保存在 Node 进程内存中。SQLite 只保存候选人档案、已校验岗位和投递记录。
+
+字节 Azure Responses 预设使用固定的 Responses endpoint 和 API 版本。服务端连接 Provider 时生成 `session_id`，并在简历分析和岗位搜索请求中复用；前端不得指定或读取该值。

@@ -47,7 +47,7 @@ export function createApi(database: AppDatabase, mailer: Mailer, vault: SessionV
   app.get('/api/dashboard', (_request, response) => response.json(buildDashboard(database, vault)));
 
   app.post('/api/ai/connect', asyncHandler(async (request, response) => {
-    const input = aiConnectionSchema.parse(request.body);
+    const input = { ...aiConnectionSchema.parse(request.body), sessionId: randomUUID() };
     await new AiProviderClient(input).probeWebSearch();
     vault.setAi(input);
     response.json(buildDashboard(database, vault));
