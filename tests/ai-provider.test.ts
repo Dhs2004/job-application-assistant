@@ -61,4 +61,10 @@ describe('AI provider output validation', () => {
       model: 'gpt-5.6-terra', reasoning: { effort: 'xhigh', summary: 'auto' }, tools: [{ type: 'web_search' }],
     });
   });
+
+  it('turns provider timeout errors into an operation-specific message', async () => {
+    const request = async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); };
+    const client = new AiProviderClient({ kind: AiProviderKind.OpenAI, apiKey: 'test-secret', model: 'test-model' }, request as typeof fetch);
+    await expect(client.probeWebSearch()).rejects.toThrow('连接探测超过 2 分钟');
+  });
 });
