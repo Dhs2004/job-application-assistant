@@ -35,7 +35,7 @@ export default function App() {
   }
 
   if (!data) return <div className="loading-screen"><span>投递舱</span><i /></div>;
-  if (!data.profile) {
+  if (!data.profile || !data.ai.connected) {
     return <><ProfileSetup aiConnected={data.ai.connected} busy={Boolean(busy)} onConnect={(payload) => run('验证 AI', async () => setData(await api.connectAi(payload)))} onSubmit={(payload) => run('分析简历', async () => setData(await api.uploadProfile(payload)))} /><Toast error={error} notice={notice} /></>;
   }
 
